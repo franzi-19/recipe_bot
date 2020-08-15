@@ -1,0 +1,18 @@
+[[source]]
+name = "pypi"
+url = "https://pypi.org/simple"
+verify_ssl = true
+
+[dev-packages]
+python-language-server = "*"
+pdbpp = "*"
+
+[packages]
+python-telegram-bot = "*"
+beautifulsoup4 = "*"
+requests = "*"
+python-dotenv = "*"
+gitpython = "*"
+
+[requires]
+python_version = "3.8"
