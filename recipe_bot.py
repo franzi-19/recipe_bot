@@ -67,7 +67,7 @@ def upload_to_git(RECIPE_FOLDER, title, path_new_file):
     push_to_git.git_push(git_path, f'added recipe {title}', path_new_file)
 
 def help(update, context):
-    context.bot.send_message(chat_id=update.effective_chat.id, text="I'm a bot to manage recipes. Just send me url to recipes (presumably to chefkoch.de)")
+    context.bot.send_message(chat_id=update.effective_chat.id, text="I'm a bot to manage recipes. Just send me urls to recipes (presumably to chefkoch.de)")
 
 def unknown(update, context):
     context.bot.send_message(chat_id=update.effective_chat.id, text="Sorry, I didn't understand that command.")
@@ -76,16 +76,65 @@ def wait_for_comment(update, context):
     context.bot.send_message(chat_id=update.effective_chat.id, text="Great, for which recipe do you want to write a comment? State the ID")
     return CHOOSING
 
-# TODO
-def choose_recipe(update, context):
-    print('recipe', update.message.text)
-    context.bot.send_message(chat_id=update.effective_chat.id, text="What is the comment?")
-    return ADDING
 
-# TODO
+def choose_recipe(update, context):
+    # leave conversation
+    if update.message.text == 'end':
+        context.bot.send_message(chat_id=update.effective_chat.id, text='Abort')
+        return ConversationHandler.END
+    # maybe an ID
+    elif update.message.text.isnumeric():
+        found = ''
+        RECIPE_FOLDER = os.getenv("RECIPE_FOLDER")
+        all_recipes = [rec for rec in os.listdir(RECIPE_FOLDER) if rec.split('_')[0].isnumeric()]
+        for rec in all_recipes: 
+            if int(rec.split('_')[0]) == int(update.message.text):
+                context.user_data['selected_recipe'] = f'{RECIPE_FOLDER}/{rec}'
+                found = rec
+        # recipe with that ID exists
+        if found != '':
+            context.bot.send_message(chat_id=update.effective_chat.id, text=f"You've selected '{found}'. What is your comment?")
+            return ADDING
+        # not an valid ID
+        else:
+            context.bot.send_message(chat_id=update.effective_chat.id, text='No recipe found under this ID. Please specify an existing ID or type "end"')
+            return CHOOSING
+    # not an valid ID but maybe part of a title
+    else:
+        found = []
+        RECIPE_FOLDER = os.getenv("RECIPE_FOLDER")
+        all_recipes = [rec for rec in os.listdir(RECIPE_FOLDER) if rec.split('_')[0].isnumeric()]
+        all_recipes.sort(key=_key_for_sorting)
+        for rec in all_recipes: 
+            if update.message.text in rec:
+                found.append(rec)
+        if found != []:
+            context.bot.send_message(chat_id=update.effective_chat.id, text=f'Not an ID, do you mean one of these recipes: {found}? Please specify an ID or type "end"')
+            return CHOOSING
+        else:
+            context.bot.send_message(chat_id=update.effective_chat.id, text='No recipe found for your input. Please specify an ID or type "end"')
+            return CHOOSING
+
 def add_comment(update, context):
-    print('comment', update.message.text)
-    context.bot.send_message(chat_id=update.effective_chat.id, text='Successful')
+    comment = update.message.text
+    found_position = 0
+    contents = []
+
+    with open(context.user_data['selected_recipe'], 'r') as recipe_file:
+        contents = recipe_file.readlines()
+        for index, line in enumerate(contents):
+            if 'Kommentare' in line:
+                found_position = index
+
+    # recipe has comment section
+    if found_position != 0:
+        contents.insert(found_position +1, f'* {comment}\n')
+        with open(context.user_data['selected_recipe'],'w') as recipe_file:
+            recipe_file.writelines(contents)
+        context.bot.send_message(chat_id=update.effective_chat.id, text='Successful')
+    else:
+        context.bot.send_message(chat_id=update.effective_chat.id, text='Unable to add a comment: The recipe does not have a comment section')
+
     return ConversationHandler.END
 
 def setup_bot():
