@@ -1,0 +1,3 @@
+[submodule "chefkoch_to_markdown"]
+	path = chefkoch_to_markdown
+	url = git@github.com:franzi-19/chefkoch_to_markdown.git
