@@ -1,5 +1,5 @@
 import logging
-from telegram.ext import CommandHandler, Updater, MessageHandler, Filters, ConversationHandler
+from telegram.ext import CommandHandler, Updater, MessageHandler, Filters, ConversationHandler, Handler
 from  chefkoch_to_markdown import markdown_gen
 from dotenv import load_dotenv
 import os
@@ -137,20 +137,59 @@ def add_comment(update, context):
 
     return ConversationHandler.END
 
+def get_chatid_set():
+    chatlist = os.getenv("CHAT_IDS")
+    if chatlist is not None:
+        return set(int(id) for id in chatlist.split(","))
+
+class CIDFilteredHandler(Handler):
+    """
+    Wrapping handler filtering by chat ids to allow us to easily create private bots.
+    """
+    def __init__(self, valid_cids, inner):
+        self.inner = inner
+        self.run_async = inner.run_async
+        self.valid_cids = set(valid_cids)
+    
+    def check_update(self, update):
+        if not update.effective_chat or (self.valid_cids is not None and update.effective_chat.id not in self.valid_cids):
+            return None
+        return self.inner.check_update(update)
+
+    def handle_update(self,
+                      update,
+                      dispatcher,
+                      check_result,
+                      context= None):
+        return self.inner.handle_update(update, dispatcher, check_result, context)
+    
+    def collect_additional_context(self,
+                                   context,
+                                   update,
+                                   dispatcher,
+                                   check_result):
+        return self.inner.collect_additional_context(context, update, dispatcher, check_result)
+
 def setup_bot():
     logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',level=logging.INFO)
     updater = Updater(token=os.getenv("BOT_TOKEN"), use_context=True)
+    for upd in updater.bot.get_updates():
+        print("Update on chat", upd.effective_chat.type, upd.effective_chat.id)
     dispatcher = updater.dispatcher
+    
+    valid_cids = get_chatid_set()
 
     comment_handler = ConversationHandler(
         entry_points=[CommandHandler('comment', wait_for_comment)],
         states={CHOOSING:[MessageHandler(Filters.text & (~Filters.command), choose_recipe)],
                 ADDING:[MessageHandler(Filters.text & (~Filters.command), add_comment)]},
         fallbacks=[CommandHandler('help', help)])
-    dispatcher.add_handler(comment_handler)
+    filtered_handler = CIDFilteredHandler(valid_cids, comment_handler)
+    dispatcher.add_handler(filtered_handler)
 
     add_recipe_handler = MessageHandler(Filters.text & (~Filters.command), add_recipe_from_url)
-    dispatcher.add_handler(add_recipe_handler)
+    filtered_handler = CIDFilteredHandler(valid_cids, add_recipe_handler)
+    dispatcher.add_handler(filtered_handler)
 
     # must be added last
     unknown_handler = MessageHandler(Filters.command, unknown)
