@@ -1,0 +1,11 @@
+version: "3.8"
+services:
+  recipe_bot:
+    build: .
+    volumes:
+      - "./cooking_recipes:/data/recipes"
+      - "./sshconf:/root/.ssh"
+    environment:
+      # CHAT_IDS: 
+      BOT_TOKEN: mybottoken
+      
