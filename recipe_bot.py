@@ -28,7 +28,7 @@ def add_chefkoch_recipe(update, context):
         markdown = markdown_gen.get_markdown(update.message.text, recipe_id)
         with open(path_new_file,'w') as f:
             f.write(markdown)
-        upload_to_git(RECIPE_FOLDER, title, path_new_file) # comment if not umpload to git
+        upload_to_git(RECIPE_FOLDER, f"added recipe {title}", path_new_file) # comment if not umpload to git
         context.bot.send_message(chat_id=update.effective_chat.id, text='Successful')
     else:
         context.bot.send_message(chat_id=update.effective_chat.id, text=f'Recipe "{title}" already exists')
@@ -61,10 +61,10 @@ def _recipe_exists(folder_path, filename_without_id):
     
 
 # TODO: create gitpath better, maybe also in .env
-def upload_to_git(RECIPE_FOLDER, title, path_new_file):
+def upload_to_git(RECIPE_FOLDER, commit_msg, path_new_file):
     index = [i for i, ltr in enumerate(RECIPE_FOLDER) if ltr == '/'][-1]
     git_path = RECIPE_FOLDER[:index] + '/.git'
-    push_to_git.git_push(git_path, f'added recipe {title}', path_new_file)
+    push_to_git.git_push(git_path, commit_msg, path_new_file)
 
 def help(update, context):
     context.bot.send_message(chat_id=update.effective_chat.id, text="I'm a bot to manage recipes. Just send me urls to recipes (presumably to chefkoch.de)")
@@ -116,6 +116,7 @@ def choose_recipe(update, context):
             return CHOOSING
 
 def add_comment(update, context):
+    RECIPE_FOLDER = os.getenv("RECIPE_FOLDER")
     comment = update.message.text
     found_position = 0
     contents = []
@@ -132,6 +133,8 @@ def add_comment(update, context):
         with open(context.user_data['selected_recipe'],'w') as recipe_file:
             recipe_file.writelines(contents)
         context.bot.send_message(chat_id=update.effective_chat.id, text='Successful')
+        recipe_fn = os.path.splitext(os.path.basename(context.user_data['selected_recipe']))[0]
+        upload_to_git(RECIPE_FOLDER, f"added comment to {recipe_fn}", context.user_data['selected_recipe']) # notify user if push or commit fails
     else:
         context.bot.send_message(chat_id=update.effective_chat.id, text='Unable to add a comment: The recipe does not have a comment section')
 
