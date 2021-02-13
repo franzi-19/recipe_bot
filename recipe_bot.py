@@ -24,6 +24,7 @@ def add_chefkoch_recipe(update, context):
     filename_without_id = _new_filename_from_title(title)
     path_new_file = RECIPE_FOLDER + f'/{recipe_id}_{filename_without_id}.md'
 
+    update_repo(RECIPE_FOLDER) 
     if not _recipe_exists(RECIPE_FOLDER, filename_without_id):
         markdown = markdown_gen.get_markdown(update.message.text, recipe_id)
         with open(path_new_file,'w') as f:
@@ -58,9 +59,13 @@ def _key_for_sorting(elem):
 
 def _recipe_exists(folder_path, filename_without_id):
     return [found for found in os.listdir(folder_path) if filename_without_id in found] != []
-    
 
-# TODO: create gitpath better, maybe also in .env
+def update_repo(RECIPE_FOLDER):
+    # TODO: Proper search for .git upwards from the recipe folder
+    index = [i for i, ltr in enumerate(RECIPE_FOLDER) if ltr == '/'][-1]
+    git_path = RECIPE_FOLDER[:index] + '/.git'
+    push_to_git.git_pull(git_path)
+    
 def upload_to_git(RECIPE_FOLDER, commit_msg, path_new_file):
     index = [i for i, ltr in enumerate(RECIPE_FOLDER) if ltr == '/'][-1]
     git_path = RECIPE_FOLDER[:index] + '/.git'
@@ -86,6 +91,7 @@ def choose_recipe(update, context):
     elif update.message.text.isnumeric():
         found = ''
         RECIPE_FOLDER = os.getenv("RECIPE_FOLDER")
+        update_repo(RECIPE_FOLDER) 
         all_recipes = [rec for rec in os.listdir(RECIPE_FOLDER) if rec.split('_')[0].isnumeric()]
         for rec in all_recipes: 
             if int(rec.split('_')[0]) == int(update.message.text):
@@ -103,6 +109,7 @@ def choose_recipe(update, context):
     else:
         found = []
         RECIPE_FOLDER = os.getenv("RECIPE_FOLDER")
+        update_repo(RECIPE_FOLDER) 
         all_recipes = [rec for rec in os.listdir(RECIPE_FOLDER) if rec.split('_')[0].isnumeric()]
         all_recipes.sort(key=_key_for_sorting)
         for rec in all_recipes: 
@@ -121,6 +128,7 @@ def add_comment(update, context):
     found_position = 0
     contents = []
 
+    update_repo(RECIPE_FOLDER)
     with open(context.user_data['selected_recipe'], 'r') as recipe_file:
         contents = recipe_file.readlines()
         for index, line in enumerate(contents):
