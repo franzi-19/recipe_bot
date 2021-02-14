@@ -113,7 +113,7 @@ def choose_recipe(update, context):
         all_recipes = [rec for rec in os.listdir(RECIPE_FOLDER) if rec.split('_')[0].isnumeric()]
         all_recipes.sort(key=_key_for_sorting)
         for rec in all_recipes: 
-            if update.message.text in rec:
+            if update.message.text.lower() in rec.lower():
                 found.append(rec)
         if found != []:
             context.bot.send_message(chat_id=update.effective_chat.id, text=f'Not an ID, do you mean one of these recipes: {found}? Please specify an ID or type "end"')
