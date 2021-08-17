@@ -76,7 +76,7 @@ def unknown(update, context):
     context.bot.send_message(chat_id=update.effective_chat.id, text="Sorry, I didn't understand that command.")
 
 def wait_for_comment(update, context):
-    context.bot.send_message(chat_id=update.effective_chat.id, text="Great, for which recipe do you want to write a comment? State the ID")
+    context.bot.send_message(chat_id=update.effective_chat.id, text="Great, for which recipe do you want to write a comment? State the ID or type \"end\".")
     return CHOOSING
 
 
@@ -142,6 +142,10 @@ def ensure_line_terminations(lines):
     return [ line if line.endswith("\n") else line + "\n" for line in lines ]
 
 def add_text_comment(chat, comment, context):
+    if comment == "end":
+        context.bot.send_message(chat_id=update.effective_chat.id, text='Abort')
+        return ConversationHandler.END
+
     RECIPE_FOLDER = os.getenv("RECIPE_FOLDER")
 
     update_repo(RECIPE_FOLDER)
@@ -220,8 +224,8 @@ def add_photo(chat, photo_sizes, caption, context):
 
     recipe_fn = os.path.splitext(os.path.basename(context.user_data['selected_recipe']))[0]
     upload_to_git(RECIPE_FOLDER, f"added photo to {recipe_fn}", context.user_data['selected_recipe'], filename) # notify user if push or commit fails
-    context.bot.send_message(chat_id=chat, text=f'Added photo')
-    return ConversationHandler.END
+    context.bot.send_message(chat_id=chat, text=f'Added photo, type "end" to stop adding photos to this recipe')
+    return ADDING
 
 
 def add_comment(update, context):
@@ -233,10 +237,8 @@ def add_comment(update, context):
     chat = update.effective_chat.id
 
     if (comment:=update.message.text) is not None:
-        print("Adding text")
         return add_text_comment(chat, comment, context)
     elif (sizes:=update.message.photo) is not None:
-        print("Adding photo")
         return add_photo(chat, sizes, update.message.caption or "Bild", context)
     else:
         context.bot.send_message(chat_id=update.effective_chat.id, text='Unable to add a comment: Unsupported message content')
