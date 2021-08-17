@@ -13,6 +13,7 @@ beautifulsoup4 = "*"
 requests = "*"
 python-dotenv = "*"
 gitpython = "*"
+wand = "*"
 
 [requires]
 python_version = "3.8"
