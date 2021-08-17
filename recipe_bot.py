@@ -7,6 +7,7 @@ from os import path
 import push_to_git
 import tempfile
 from wand.image import Image
+from pathlib import Path
 
 CHOOSING, ADDING = range(2)
 
@@ -49,15 +50,10 @@ def _check_if_chefkoch(url):
 
 
 def _calculate_recipe_ID(folder_path):
-    files = os.listdir(folder_path)
-    files = [found for found in os.listdir(folder_path) if found.split('_')[0].isnumeric()]
-    files.sort(reverse=True, key=_key_for_sorting)
-    if files != None and files != []:
-        return int(files[0].split('_')[0])+1
+    max_used = max(int(found) for found in (os.path.splitext(fn)[0].split("_")[0] for fn in os.listdir(folder_path)) if found.isnumeric())
+    if max_used is not None:
+        return max_used+1
     else: return 0
-
-def _key_for_sorting(elem):
-    return int(elem.split('_')[0])
 
 def _recipe_exists(folder_path, filename_without_id):
     return [found for found in os.listdir(folder_path) if filename_without_id in found] != []
@@ -68,10 +64,10 @@ def update_repo(RECIPE_FOLDER):
     git_path = RECIPE_FOLDER[:index] + '/.git'
     push_to_git.git_pull(git_path)
     
-def upload_to_git(RECIPE_FOLDER, commit_msg, path_new_file):
+def upload_to_git(RECIPE_FOLDER, commit_msg, *files):
     index = [i for i, ltr in enumerate(RECIPE_FOLDER) if ltr == '/'][-1]
     git_path = RECIPE_FOLDER[:index] + '/.git'
-    push_to_git.git_push(git_path, commit_msg, path_new_file)
+    push_to_git.git_push(git_path, commit_msg, *files)
 
 def help(update, context):
     context.bot.send_message(chat_id=update.effective_chat.id, text="I'm a bot to manage recipes. Just send me urls to recipes (presumably to chefkoch.de)")
@@ -143,9 +139,7 @@ def find_line_by_predicate(f, pred, offset=0, cancel_pred=None, find_last=False)
     return ret
 
 def ensure_line_terminations(lines):
-    for line in lines:
-        if not line.endswith("\n"):
-            line.append("\n")
+    return [ line if line.endswith("\n") else line + "\n" for line in lines ]
 
 def add_text_comment(chat, comment, context):
     RECIPE_FOLDER = os.getenv("RECIPE_FOLDER")
@@ -157,7 +151,7 @@ def add_text_comment(chat, comment, context):
     # recipe has comment section
     if found_position is not None:
         contents.insert(found_position + 1, f'* {comment}\n')
-        ensure_line_terminations(contents)
+        contents = ensure_line_terminations(contents)
         with open(context.user_data['selected_recipe'],'w') as recipe_file:
             recipe_file.writelines(contents)
         context.bot.send_message(chat_id=chat, text='Successful')
@@ -168,21 +162,27 @@ def add_text_comment(chat, comment, context):
 
     return ConversationHandler.END
 
-def add_photo(chat, photo_sizes, context):
+def add_photo(chat, photo_sizes, caption, context):
     RECIPE_FOLDER = os.getenv("RECIPE_FOLDER")
+    rid = Path(context.user_data['selected_recipe']).name.split("_")[0]
 
     # Find insertion point
     update_repo(RECIPE_FOLDER)
     contents = open(context.user_data['selected_recipe']).readlines()
-    ensure_line_terminations(contents)
     img_section = find_line_by_predicate(iter(contents), lambda l: l.startswith("#") and ('Bilder' in l))
     if img_section is None:
-        context.bot.send_message(chat_id=chat, text='Unable to add a photo: The recipe does not have a photo section')
-        return ConversationHandler.END
-    last_item = find_line_by_predicate(iter(contents), lambda l: l.startswith("*"), offset=img_section+1, find_last=True, cancel_pred=lambda l: l.startswith("#"))
+        first_section = find_line_by_predicate(iter(contents), lambda l: l.startswith("## "))
+        if first_section is None:
+            context.bot.send_message(chat_id=chat, text='Unable to add a photo: The recipe appears to be empty')
+            return ConversationHandler.END
+        # Insert new photo section if no section is found
+        contents.insert(first_section, "## Bilder")
+        img_section = first_section
+    last_item = find_line_by_predicate(iter(contents), lambda l: l.startswith("*"), offset=img_section+1, find_last=True, cancel_pred=lambda _,l: l.startswith("#"))
     if last_item is None:
-        context.bot.send_message(chat_id=chat, text='Unable to add a photo: The recipe does not have a photo section')
-        return ConversationHandler.END
+        print("Last item fallback")
+        last_item = img_section
+    print("Last item:", last_item)
 
     # Choose and download the correct file size (Closest to 800 pixels in width - this is a pretty arbitrary value)
     sz = min(photo_sizes, key=lambda sz: abs(sz.width - 800))
@@ -201,11 +201,26 @@ def add_photo(chat, photo_sizes, context):
     scale = 800. / w
     image.resize(int(w*scale), int(h*scale))
     image.strip()
-    image.convert("jpg")
+    image = image.convert("jpg")
     image.compression_quality = 90
-    image.save("test.jpg")
 
-    context.bot.send_message(chat_id=chat, text=f'Converted photo (Selected size: {sz.width}, scaled by {scale})')
+    # Determine filename
+    recipe_img_folder = Path(RECIPE_FOLDER) / ".." / "images" / rid
+    if not recipe_img_folder.exists():
+        recipe_img_folder.mkdir(parents=True)
+
+    img_id = _calculate_recipe_ID(recipe_img_folder)
+    filename = str(recipe_img_folder / f"{img_id:03}.jpg")
+    image.save(filename=filename)
+
+    contents.insert(last_item+1, f"* ![{caption}](../images/{rid}/{img_id:03}.jpg)")
+    contents = ensure_line_terminations(contents)
+    with open(context.user_data['selected_recipe'],'w') as recipe_file:
+        recipe_file.writelines(contents)
+
+    recipe_fn = os.path.splitext(os.path.basename(context.user_data['selected_recipe']))[0]
+    upload_to_git(RECIPE_FOLDER, f"added photo to {recipe_fn}", context.user_data['selected_recipe'], filename) # notify user if push or commit fails
+    context.bot.send_message(chat_id=chat, text=f'Added photo')
     return ConversationHandler.END
 
 
@@ -222,7 +237,7 @@ def add_comment(update, context):
         return add_text_comment(chat, comment, context)
     elif (sizes:=update.message.photo) is not None:
         print("Adding photo")
-        return add_photo(chat, sizes, context)
+        return add_photo(chat, sizes, update.message.caption or "Bild", context)
     else:
         context.bot.send_message(chat_id=update.effective_chat.id, text='Unable to add a comment: Unsupported message content')
         return ConversationHandler.END
@@ -272,7 +287,7 @@ def setup_bot():
     comment_handler = ConversationHandler(
         entry_points=[CommandHandler('comment', wait_for_comment)],
         states={CHOOSING:[MessageHandler(Filters.text & (~Filters.command), choose_recipe)],
-                ADDING:[MessageHandler(Filters.text & (~Filters.command), add_comment)]},
+                ADDING:[MessageHandler((Filters.photo | Filters.text) & (~Filters.command), add_comment)]},
         fallbacks=[CommandHandler('help', help)])
     filtered_handler = CIDFilteredHandler(valid_cids, comment_handler)
     dispatcher.add_handler(filtered_handler)
