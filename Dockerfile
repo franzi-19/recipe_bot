@@ -1,4 +1,11 @@
 FROM python:3.9
+
+RUN apt-get -y update
+RUN apt-get -y upgrade
+RUN apt-get -y install libmagickwand-dev
+RUN apt-get clean
+RUN rm -rf /var/lib/apt/lists/* 
+
 RUN mkdir -p /data/recipes
 RUN mkdir -p /root/.ssh
 VOLUME /data/recipes /root/.ssh
